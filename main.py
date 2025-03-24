@@ -20,6 +20,8 @@ def main() -> None:
     args = parser.parse_args()
     
     # Get API key from args or environment
+    print(f"Environment variables: {os.environ.get('CLAUDE_API_KEY')}")
+
     api_key = args.api_key or os.environ.get("CLAUDE_API_KEY")
     if not api_key:
         raise ValueError(
@@ -32,8 +34,13 @@ def main() -> None:
     print("Setting up Clinical BERT model...")
     tokenizer, model = setup_bert()
     
-    print("Encoding ICD-10 descriptions...")
-    icd10_embeddings = encode_icd10_descriptions(icd10_df, tokenizer, model)
+    # Path for cached embeddings
+    cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    embeddings_cache_path = os.path.join(cache_dir, "icd10_embeddings.pt")
+    
+    # Load or generate ICD-10 embeddings
+    icd10_embeddings = encode_icd10_descriptions(icd10_df, tokenizer, model, cache_path=embeddings_cache_path)
     
     if args.note:
         # Process a single provided note

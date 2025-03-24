@@ -1,0 +1,858 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+src/
+  evaluate.py
+  load_data.py
+  preprocessing.py
+  train.py
+  utils.py
+.ignore
+CLAUDE.md
+main.py
+README.md
+requirements.txt
+
+================================================================
+Files
+================================================================
+
+================
+File: src/evaluate.py
+================
+"""
+Evaluation module for ICD-10 classification.
+"""
+from typing import List, Tuple, Dict, Any
+
+
+def evaluate(predicted: List[str], true: List[str]) -> Tuple[float, float, float]:
+    """
+    Compute precision, recall, and F1-score for predicted vs. true ICD-10 codes.
+    
+    Args:
+        predicted: List of predicted ICD-10 codes
+        true: List of true ICD-10 codes
+        
+    Returns:
+        Tuple containing precision, recall, and F1-score
+    """
+    pred_set, true_set = set(predicted), set(true)
+    tp = len(pred_set & true_set)  # True positives
+    fp = len(pred_set - true_set)  # False positives
+    fn = len(true_set - pred_set)  # False negatives
+    
+    precision = tp / (tp + fp) if tp + fp > 0 else 0
+    recall = tp / (tp + fn) if tp + fn > 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+    
+    return precision, recall, f1
+
+
+def print_evaluation_results(predicted: List[str], true: List[str]) -> None:
+    """
+    Print evaluation results in a human-readable format.
+    
+    Args:
+        predicted: List of predicted ICD-10 codes
+        true: List of true ICD-10 codes
+    """
+    precision, recall, f1 = evaluate(predicted, true)
+    
+    print(f"Evaluation Results:")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1 Score: {f1:.4f}")
+    
+    # Print correctly predicted and missed codes
+    true_set = set(true)
+    pred_set = set(predicted)
+    correct = true_set.intersection(pred_set)
+    missed = true_set - pred_set
+    false_positives = pred_set - true_set
+    
+    print(f"\nCorrectly predicted ({len(correct)}): {', '.join(sorted(correct))}")
+    print(f"Missed ({len(missed)}): {', '.join(sorted(missed))}")
+    print(f"False positives ({len(false_positives)}): {', '.join(sorted(false_positives))}")
+
+
+def run_evaluation(
+    dataset: Dict[str, Any],
+    icd10_df: Any,
+    icd10_embeddings: Any,
+    tokenizer: Any,
+    model: Any,
+    api_key: str,
+    predict_func: callable,
+    num_samples: int = 5
+) -> None:
+    """
+    Run evaluation on a subset of the test dataset.
+    
+    Args:
+        dataset: Test dataset containing clinical notes and codes
+        icd10_df: DataFrame containing ICD-10 codes and descriptions
+        icd10_embeddings: Pre-computed embeddings for ICD-10 descriptions
+        tokenizer: BERT tokenizer
+        model: BERT model
+        api_key: Claude API key
+        predict_func: Function to predict codes given inputs
+        num_samples: Number of samples to evaluate
+    """
+    total_precision, total_recall, total_f1 = 0, 0, 0
+    
+    print(f"Evaluating on {num_samples} samples...\n")
+    
+    for i in range(min(num_samples, len(dataset))):
+        note = dataset[i]["user"]
+        true_codes = dataset[i]["codes"]
+        
+        print(f"Example {i+1}:")
+        print(f"Clinical Note: {note[:200]}..." if len(note) > 200 else f"Clinical Note: {note}")
+        print(f"True Codes: {true_codes}")
+        
+        predicted_codes = predict_func(
+            note, icd10_embeddings, icd10_df, tokenizer, model, api_key
+        )
+        
+        print(f"Predicted Codes: {predicted_codes}")
+        precision, recall, f1 = evaluate(predicted_codes, true_codes)
+        print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}\n")
+        
+        total_precision += precision
+        total_recall += recall
+        total_f1 += f1
+    
+    # Calculate averages
+    avg_precision = total_precision / num_samples
+    avg_recall = total_recall / num_samples
+    avg_f1 = total_f1 / num_samples
+    
+    print(f"Overall Results (avg of {num_samples} samples):")
+    print(f"Average Precision: {avg_precision:.4f}")
+    print(f"Average Recall: {avg_recall:.4f}")
+    print(f"Average F1 Score: {avg_f1:.4f}")
+
+================
+File: src/load_data.py
+================
+"""
+Functions for loading the dataset and ICD-10 descriptions.
+"""
+import pandas as pd
+from datasets import load_dataset
+from typing import Dict, Any
+
+
+def load_icd10_data() -> pd.DataFrame:
+    """
+    Load the ICD-10 descriptions from a CSV file.
+    
+    Returns:
+        DataFrame containing ICD-10 codes and their descriptions
+    """
+    url = "https://raw.githubusercontent.com/ainativehealth/GoodMedicalCoder/main/ICD-10_formatted.csv"
+    
+    # Read the file as a single column (no separator)
+    raw_df = pd.read_csv(url, header=None, names=['raw_data'])
+    
+    # Split the raw data into description and code
+    raw_df[['Description', 'ICD10_Code']] = raw_df['raw_data'].str.split(' \| ', expand=True)
+    
+    # Clean up the data (remove quotes if present)
+    raw_df['Description'] = raw_df['Description'].str.replace('"', '')
+    raw_df['ICD10_Code'] = raw_df['ICD10_Code'].str.replace('"', '')
+    
+    # Drop the original raw data column
+    result_df = raw_df[['Description', 'ICD10_Code']]
+    
+    return result_df
+
+
+def load_test_dataset() -> Dict[str, Any]:
+    """
+    Load the test split of the synthetic EHR dataset.
+    
+    Returns:
+        Test dataset containing clinical notes and their associated ICD-10 codes
+    """
+    dataset = load_dataset("FiscaAI/synth-ehr-icd10cm-prompt")
+    return dataset["test"]
+
+================
+File: src/preprocessing.py
+================
+"""
+Preprocessing module for clinical text data.
+"""
+import re
+from typing import Dict, List, Optional, Union, Tuple
+import torch
+from transformers import AutoTokenizer, AutoModel
+
+
+def medical_spell_check(text: str, spell_checker=None, medical_dict: Optional[Dict[str, str]] = None) -> str:
+    """
+    Correct spelling errors in medical terms.
+    
+    Args:
+        text: Raw clinical text
+        spell_checker: Medical-specific spell checker (if available)
+        medical_dict: Custom dictionary of medical terms for spelling correction
+        
+    Returns:
+        Spell-corrected text
+    """
+    # If a spell checker is provided, use it
+    if spell_checker:
+        return spell_checker(text)
+    
+    # If no spell checker available but a medical dictionary is provided
+    # This is a simple implementation - a real implementation would be more sophisticated
+    if medical_dict:
+        words = text.split()
+        corrected_words = []
+        
+        for word in words:
+            # Check if a misspelled version of the word exists in our dictionary
+            if word in medical_dict:
+                corrected_words.append(medical_dict[word])
+            else:
+                corrected_words.append(word)
+        
+        return ' '.join(corrected_words)
+    
+    # If neither spell checker nor dictionary is available, return original text
+    return text
+
+
+def normalise_text(text: str) -> str:
+    """
+    Standardise text by converting to lowercase and removing special characters.
+    Retains letters, numbers, spaces, and hyphens.
+    
+    Args:
+        text: Input text to normalise
+        
+    Returns:
+        Normalised text
+    """
+    # Convert to lowercase
+    lower_text = text.lower()
+    
+    # Remove special characters except alphanumeric, spaces, and hyphens
+    normalised_text = re.sub(r'[^a-z0-9\s-]', '', lower_text)
+    
+    # Replace multiple spaces with single space
+    normalised_text = re.sub(r'\s+', ' ', normalised_text)
+    
+    return normalised_text.strip()
+
+
+def standardise_abbreviations(text: str, abbreviation_dict: Dict[str, str]) -> str:
+    """
+    Expand medical abbreviations to their full forms based on provided dictionary.
+    
+    Args:
+        text: Input text with abbreviations
+        abbreviation_dict: Dictionary mapping abbreviations to their full forms
+        
+    Returns:
+        Text with expanded abbreviations
+    """
+    words = text.split()
+    standardised_words = [abbreviation_dict.get(word, word) for word in words]
+    return ' '.join(standardised_words)
+
+
+def preprocess_clinical_text(
+    text: str,
+    spell_checker=None, 
+    medical_dict: Optional[Dict[str, str]] = None,
+    abbreviation_dict: Optional[Dict[str, str]] = None
+) -> str:
+    """
+    Apply the complete preprocessing pipeline to clinical text.
+    
+    Args:
+        text: Raw clinical text
+        spell_checker: Medical spell checker function (optional)
+        medical_dict: Dictionary for spell correction (optional)
+        abbreviation_dict: Dictionary of abbreviations and their full forms (optional)
+        
+    Returns:
+        Preprocessed text ready for tokenisation
+    """
+    # Step 1: Medical spell checking
+    corrected_text = medical_spell_check(text, spell_checker, medical_dict)
+    
+    # Step 2: Text normalisation
+    normalised_text = normalise_text(corrected_text)
+    
+    # Step 3: Abbreviation standardisation
+    if abbreviation_dict:
+        standardised_text = standardise_abbreviations(normalised_text, abbreviation_dict)
+    else:
+        standardised_text = normalised_text
+    
+    return standardised_text
+
+
+def batch_preprocess(
+    texts: List[str],
+    spell_checker=None,
+    medical_dict: Optional[Dict[str, str]] = None,
+    abbreviation_dict: Optional[Dict[str, str]] = None,
+    batch_size: int = 1000
+) -> List[str]:
+    """
+    Process a large list of clinical texts in batches for efficiency.
+    
+    Args:
+        texts: List of clinical texts to preprocess
+        spell_checker: Medical spell checker function (optional)
+        medical_dict: Dictionary for spell correction (optional)
+        abbreviation_dict: Dictionary of abbreviations and their full forms (optional)
+        batch_size: Number of texts to process in each batch
+        
+    Returns:
+        List of preprocessed texts
+    """
+    processed_texts = []
+    
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        processed_batch = [
+            preprocess_clinical_text(
+                text, 
+                spell_checker, 
+                medical_dict, 
+                abbreviation_dict
+            ) for text in batch
+        ]
+        processed_texts.extend(processed_batch)
+    
+    return processed_texts
+
+
+def setup_bert() -> Tuple[AutoTokenizer, AutoModel]:
+    """
+    Initialize the Clinical BERT tokenizer and model.
+    
+    Returns:
+        Tuple containing the tokenizer and model
+    """
+    tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+    model = AutoModel.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+    return tokenizer, model
+
+
+def encode_icd10_descriptions(icd10_df, tokenizer, model) -> torch.Tensor:
+    """
+    Encode all ICD-10 descriptions into embeddings.
+    
+    Args:
+        icd10_df: DataFrame containing ICD-10 codes and descriptions
+        tokenizer: BERT tokenizer
+        model: BERT model
+        
+    Returns:
+        Tensor of embeddings for each ICD-10 description
+    """
+    descriptions = icd10_df["description"].tolist()
+    embeddings = []
+    for desc in descriptions:
+        inputs = tokenizer(desc, return_tensors="pt", truncation=True, padding=True, max_length=512)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        emb = outputs.last_hidden_state[:, 0, :].squeeze()
+        embeddings.append(emb)
+    return torch.stack(embeddings)
+
+
+def encode_note(note: str, tokenizer, model) -> torch.Tensor:
+    """
+    Encode a single clinical note into an embedding.
+    
+    Args:
+        note: Clinical note text
+        tokenizer: BERT tokenizer
+        model: BERT model
+        
+    Returns:
+        Embedding tensor for the note
+    """
+    inputs = tokenizer(note, return_tensors="pt", truncation=True, padding=True, max_length=512)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    return outputs.last_hidden_state[:, 0, :].squeeze()
+
+
+# Example medical abbreviation dictionary
+COMMON_MEDICAL_ABBREVIATIONS = {
+    "mri": "magnetic resonance imaging",
+    "ct": "computed tomography",
+    "nsaid": "non-steroidal anti-inflammatory drug",
+    "htn": "hypertension",
+    "dm": "diabetes mellitus",
+    "chf": "congestive heart failure",
+    "copd": "chronic obstructive pulmonary disease",
+    "cad": "coronary artery disease",
+    "bmi": "body mass index",
+    "bp": "blood pressure",
+    "hr": "heart rate",
+    "pt": "patient",
+    "yo": "year old",
+    "w/": "with",
+    "w/o": "without",
+    "rx": "prescription",
+    "dx": "diagnosis",
+    "hx": "history",
+    "fx": "fracture",
+    "sob": "shortness of breath",
+}
+
+================
+File: src/train.py
+================
+"""
+Training module for ICD-10 classification model.
+
+Note: This MVP uses a Retrieval-Augmented Generation (RAG) approach with:
+1. Clinical BERT embeddings for similarity matching
+2. Claude API for final code selection from candidates
+3. No explicit training step is needed as we leverage pre-trained models
+
+For future extensions, this module could include:
+- Fine-tuning Clinical BERT for ICD-10 classification
+- Training a classifier on top of embeddings
+- Implementing a multi-label classification approach
+"""
+
+================
+File: src/utils.py
+================
+"""
+Utilities for clinical text processing and ICD-10 prediction.
+"""
+import requests
+import numpy as np
+import torch
+from typing import Dict, List, Any
+from sklearn.metrics.pairwise import cosine_similarity
+
+from src.preprocessing import (
+    COMMON_MEDICAL_ABBREVIATIONS,
+    preprocess_clinical_text,
+    batch_preprocess,
+    encode_note
+)
+
+
+def load_medical_dictionary() -> Dict[str, str]:
+    """
+    Load a dictionary of commonly misspelled medical terms.
+    
+    Returns:
+        Dictionary mapping misspelled terms to their correct forms
+    """
+    # This is a minimal example - in production, this would load from a file
+    return {
+        "arthritus": "arthritis",
+        "ostearthritis": "osteoarthritis",
+        "diabeties": "diabetes",
+        "hipertension": "hypertension",
+        "colestrol": "cholesterol",
+        "obisity": "obesity",
+        "neumonia": "pneumonia",
+        "rheumatism": "rheumatism",
+        "fatige": "fatigue",
+        "inflamation": "inflammation",
+    }
+
+
+def demo_preprocessing() -> None:
+    """
+    Demonstrate the preprocessing pipeline with example clinical texts.
+    """
+    example_texts = [
+        "Pt is a 68yo female w/ hx of HTN, DM, and osteoarthritis. MRI shows effusion!",
+        "Patient had CT scan which revealed osteoarthiritis and mild inflammation.",
+        "Pt. c/o SOB, prescribed NSAID for pain management; follow-up in 2 wks."
+    ]
+    
+    # Load dictionaries
+    medical_dict = load_medical_dictionary()
+    abbreviation_dict = COMMON_MEDICAL_ABBREVIATIONS
+    
+    print("Original texts:")
+    for i, text in enumerate(example_texts):
+        print(f"{i+1}. {text}")
+    
+    print("\nPreprocessed texts:")
+    processed_texts = batch_preprocess(
+        example_texts,
+        medical_dict=medical_dict,
+        abbreviation_dict=abbreviation_dict
+    )
+    
+    for i, text in enumerate(processed_texts):
+        print(f"{i+1}. {text}")
+
+
+def call_claude_api(prompt: str, api_key: str) -> str:
+    """
+    Call the Claude API with a given prompt.
+    
+    Args:
+        prompt: Text prompt to send to the API
+        api_key: Claude API key
+        
+    Returns:
+        Generated text response from the API
+    """
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    data = {
+        "model": "claude-3-sonnet-20240229",
+        "max_tokens": 150,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+    
+    response = requests.post(url, json=data, headers=headers)
+    response.raise_for_status()
+    return response.json()["content"][0]["text"]
+
+
+def predict_codes(
+    note: str, 
+    icd10_embeddings: torch.Tensor, 
+    icd10_df: Any, 
+    tokenizer: Any, 
+    model: Any, 
+    api_key: str
+) -> List[str]:
+    """
+    Predict ICD-10 codes for a clinical note using a RAG approach.
+    
+    Args:
+        note: Clinical note text
+        icd10_embeddings: Pre-computed ICD-10 description embeddings
+        icd10_df: DataFrame containing ICD-10 codes and descriptions
+        tokenizer: BERT tokenizer
+        model: BERT model
+        api_key: Claude API key
+        
+    Returns:
+        List of predicted ICD-10 codes
+    """
+    # Encode the clinical note
+    note_emb = encode_note(note, tokenizer, model).numpy()
+    
+    # Compute cosine similarities with ICD-10 embeddings
+    similarities = cosine_similarity([note_emb], icd10_embeddings.numpy())[0]
+    top_indices = np.argsort(similarities)[-20:][::-1]  # Top 20 most similar
+    top_codes = icd10_df.iloc[top_indices]["code"].tolist()
+    top_descriptions = icd10_df.iloc[top_indices]["description"].tolist()
+    
+    # Create API call with full clinical note
+    candidate_text = "\n".join([f"{i+1}. {code} - {desc}" 
+                               for i, (code, desc) in enumerate(zip(top_codes, top_descriptions))])
+    
+    selection_prompt = (
+        f"You are a medical coding expert specializing in ICD-10 codes. Review this clinical note and select the most appropriate ICD-10 codes from the candidates.\n\n"
+        f"Clinical note: {note}\n\n"
+        f"Candidate ICD-10 codes:\n{candidate_text}\n\n"
+        "Return only the relevant ICD-10 codes from the list, separated by commas. Do not include explanations."
+    )
+    
+    response = call_claude_api(selection_prompt, api_key)
+    
+    # Parse the response into a list of codes
+    # Clean up in case the response includes explanations despite instructions
+    cleaned_response = response.strip().split("\n")[0]  # Take only first line to avoid explanations
+    predicted_codes = [code.strip() for code in cleaned_response.split(",")]
+    
+    return predicted_codes
+
+
+if __name__ == "__main__":
+    demo_preprocessing()
+
+================
+File: .ignore
+================
+CLAUDE.md
+.env
+
+================
+File: CLAUDE.md
+================
+# Assistant Guide
+
+## Purpose
+Help create clean, effective code for a 2-hour clinical text processing take-home assignment.
+
+## Response Guidelines
+- Prioritise simplicity over sophistication
+- Focus on production-quality code that's maintainable, not just functional
+- Provide rationale for architecture decisions
+- Highlight potential edge cases in clinical text processing
+- Suggest efficient implementation approaches given the time constraint
+
+## Code Assistance
+- Recommend standard clinical NLP patterns and libraries
+- Show full implementation for complex functions
+- Include docstrings and type hints in all code examples
+- Point out where error handling is critical for clinical data
+- Favor readability over optimisation unless performance is explicitly required
+
+## Project Organisation
+- Suggest modular code structure that can be expanded if time permits
+- Emphasise clear separation of preprocessing, modeling, and evaluation
+- Recommend appropriate data handling patterns for clinical text
+
+## Error Prevention
+- Flag potential data leakage issues
+- Identify where validation is necessary
+- Highlight security/privacy considerations for clinical data
+- Note where performance bottlenecks might occur
+
+## Final Delivery Checklist
+- README with approach explanation and usage instructions
+- Clean requirements.txt with only necessary dependencies
+- Well-structured code with consistent naming conventions
+- Basic testing strategy
+- Documentation of limitations and future improvements
+
+================
+File: main.py
+================
+"""
+Main script to run the ICD-10 classification pipeline.
+"""
+import os
+import argparse
+from typing import Dict, Any, List
+
+from src.load_data import load_icd10_data, load_test_dataset
+from src.preprocessing import setup_bert, encode_icd10_descriptions
+from src.utils import predict_codes
+from src.evaluate import evaluate, print_evaluation_results, run_evaluation
+
+
+def main() -> None:
+    """Main function to run the ICD-10 classification pipeline."""
+    parser = argparse.ArgumentParser(description="ICD-10 Classification Pipeline")
+    parser.add_argument("--api_key", type=str, help="Claude API key")
+    parser.add_argument("--num_samples", type=int, default=5, help="Number of samples to evaluate")
+    parser.add_argument("--note", type=str, help="Process a single clinical note")
+    args = parser.parse_args()
+    
+    # Get API key from args or environment
+    print(f"Environment variables: {os.environ.get('CLAUDE_API_KEY')}")
+
+    api_key = args.api_key or os.environ.get("CLAUDE_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "Claude API key must be provided via --api_key argument or CLAUDE_API_KEY environment variable"
+        )
+    
+    print("Loading ICD-10 data...")
+    icd10_df = load_icd10_data()
+    
+    print("Setting up Clinical BERT model...")
+    tokenizer, model = setup_bert()
+    
+    print("Encoding ICD-10 descriptions...")
+    icd10_embeddings = encode_icd10_descriptions(icd10_df, tokenizer, model)
+    
+    if args.note:
+        # Process a single provided note
+        print("Processing single note...")
+        predicted_codes = predict_codes(
+            args.note, icd10_embeddings, icd10_df, tokenizer, model, api_key
+        )
+        print(f"Predicted ICD-10 Codes: {predicted_codes}")
+    else:
+        # Run evaluation on test dataset
+        print("Loading test dataset...")
+        test_dataset = load_test_dataset()
+        
+        run_evaluation(
+            test_dataset, 
+            icd10_df, 
+            icd10_embeddings, 
+            tokenizer, 
+            model, 
+            api_key,
+            predict_codes,
+            args.num_samples
+        )
+
+
+if __name__ == "__main__":
+    main()
+
+================
+File: README.md
+================
+# ICD-10 Code Prediction for Clinical Notes
+
+## Overview
+
+This project implements a system for automatically predicting ICD-10 diagnosis codes from clinical notes using a Retrieval-Augmented Generation (RAG) approach. The system combines:
+
+1. **Clinical BERT Embeddings**: Uses Bio_ClinicalBERT to generate embeddings for both clinical notes and ICD-10 descriptions
+2. **Similarity Matching**: Identifies candidate ICD-10 codes based on embedding similarity 
+3. **Claude API Refinement**: Uses the Claude language model to make final code selections from candidates
+
+## Approach
+
+The system uses a modular architecture with these key components:
+
+- **Data Loading**: Loads ICD-10 codes/descriptions and test clinical notes
+- **Preprocessing**: Normalizes text, expands abbreviations, and corrects spelling
+- **Embedding Generation**: Creates vector representations of text using Bio_ClinicalBERT
+- **Retrieval**: Finds similar ICD-10 codes using vector similarity
+- **Generation**: Filters and refines candidate codes using Claude API
+- **Evaluation**: Measures precision, recall, and F1 score of predictions
+
+This approach offers several advantages:
+- No training required (leverages pre-trained models)
+- Combines both embedding-based retrieval and LLM-based generation
+- Handles the complexity of medical terminology and context
+
+## Requirements
+
+```
+datasets>=2.12.0
+pandas>=1.5.3
+transformers>=4.30.0
+torch>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.2.2
+requests>=2.31.0
+```
+
+## Setup
+
+1. Clone the repository
+2. Install dependencies: `pip install -r requirements.txt`
+3. Obtain a Claude API key
+
+## Usage
+
+### Process a single clinical note:
+
+```bash
+python main.py --api_key YOUR_CLAUDE_API_KEY --note "Patient presents with shortness of breath..."
+```
+
+### Run evaluation on the test dataset:
+
+```bash
+python main.py --api_key YOUR_CLAUDE_API_KEY --num_samples 5
+```
+
+You can also set the API key as an environment variable:
+
+```bash
+export CLAUDE_API_KEY=your_api_key
+python main.py --num_samples 10
+```
+
+## Project Structure
+
+```
+.
+   main.py              # Main script to run the pipeline
+   requirements.txt     # Python dependencies
+   src/
+      load_data.py     # Functions to load data
+      preprocessing.py # Text preprocessing functions
+      train.py         # Placeholder (no training needed)
+      utils.py         # Utility functions including API calls
+      evaluate.py      # Evaluation metrics and reporting
+```
+
+## Limitations and Future Improvements
+
+- **Performance**: Encoding all ICD-10 descriptions is memory-intensive and could be optimized
+- **Clinical Preprocessing**: Could be enhanced with more domain-specific preprocessing
+- **Evaluation**: Current metrics are basic; could add weighted F1 and confusion matrices
+- **Model Training**: Could fine-tune BERT on the specific domain for better embeddings
+- **Data Privacy**: A production system would need more secure handling of PHI
+
+## References
+
+- Bio_ClinicalBERT: [https://huggingface.co/emilyalsentzer/Bio_ClinicalBERT](https://huggingface.co/emilyalsentzer/Bio_ClinicalBERT)
+- ICD-10 Codes: GoodMedicalCoder dataset
+- Claude API: [https://docs.anthropic.com/claude/reference/getting-started-with-the-api](https://docs.anthropic.com/claude/reference/getting-started-with-the-api)
+
+================
+File: requirements.txt
+================
+datasets>=2.12.0
+pandas>=1.5.3
+transformers>=4.30.0
+torch>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.2.2
+requests>=2.31.0
+
+
+
+================================================================
+End of Codebase
+================================================================

@@ -14,8 +14,21 @@ def load_icd10_data() -> pd.DataFrame:
         DataFrame containing ICD-10 codes and their descriptions
     """
     url = "https://raw.githubusercontent.com/ainativehealth/GoodMedicalCoder/main/ICD-10_formatted.csv"
-    icd10_df = pd.read_csv(url, sep="|")
-    return icd10_df
+    
+    # Read the file as a single column (no separator)
+    raw_df = pd.read_csv(url, header=None, names=['raw_data'])
+    
+    # Split the raw data into description and code
+    raw_df[['Description', 'ICD10_Code']] = raw_df['raw_data'].str.split(r' \| ', expand=True)
+    
+    # Clean up the data (remove quotes if present)
+    raw_df['Description'] = raw_df['Description'].str.replace('"', '')
+    raw_df['ICD10_Code'] = raw_df['ICD10_Code'].str.replace('"', '')
+    
+    # Drop the original raw data column
+    result_df = raw_df[['Description', 'ICD10_Code']]
+    
+    return result_df
 
 
 def load_test_dataset() -> Dict[str, Any]:

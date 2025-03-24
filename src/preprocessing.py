@@ -2,6 +2,7 @@
 Preprocessing module for clinical text data.
 """
 import re
+import os
 from typing import Dict, List, Optional, Union, Tuple
 import torch
 from transformers import AutoTokenizer, AutoModel
@@ -163,7 +164,7 @@ def setup_bert() -> Tuple[AutoTokenizer, AutoModel]:
     return tokenizer, model
 
 
-def encode_icd10_descriptions(icd10_df, tokenizer, model) -> torch.Tensor:
+def encode_icd10_descriptions(icd10_df, tokenizer, model, cache_path=None) -> torch.Tensor:
     """
     Encode all ICD-10 descriptions into embeddings.
     
@@ -171,19 +172,46 @@ def encode_icd10_descriptions(icd10_df, tokenizer, model) -> torch.Tensor:
         icd10_df: DataFrame containing ICD-10 codes and descriptions
         tokenizer: BERT tokenizer
         model: BERT model
+        cache_path: Path to save/load embeddings cache (optional)
         
     Returns:
         Tensor of embeddings for each ICD-10 description
     """
-    descriptions = icd10_df["description"].tolist()
+    # Try to load cached embeddings if cache_path is provided
+    if cache_path and os.path.exists(cache_path):
+        print(f"Loading cached ICD-10 embeddings from {cache_path}")
+        try:
+            return torch.load(cache_path)
+        except Exception as e:
+            print(f"Error loading cached embeddings: {e}. Generating new embeddings.")
+    
+    print("Generating ICD-10 embeddings (this may take some time)...")
+    descriptions = icd10_df["Description"].tolist()
     embeddings = []
-    for desc in descriptions:
+    
+    # Use tqdm for progress bar if available
+    try:
+        from tqdm import tqdm
+        desc_iter = tqdm(descriptions)
+    except ImportError:
+        desc_iter = descriptions
+        
+    for desc in desc_iter:
         inputs = tokenizer(desc, return_tensors="pt", truncation=True, padding=True, max_length=512)
         with torch.no_grad():
             outputs = model(**inputs)
         emb = outputs.last_hidden_state[:, 0, :].squeeze()
         embeddings.append(emb)
-    return torch.stack(embeddings)
+    
+    result = torch.stack(embeddings)
+    
+    # Save to cache if path is provided
+    if cache_path:
+        print(f"Saving ICD-10 embeddings to {cache_path}")
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        torch.save(result, cache_path)
+        
+    return result
 
 
 def encode_note(note: str, tokenizer, model) -> torch.Tensor:

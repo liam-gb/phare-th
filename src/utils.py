@@ -124,8 +124,8 @@ def predict_codes(
     # Compute cosine similarities with ICD-10 embeddings
     similarities = cosine_similarity([note_emb], icd10_embeddings.numpy())[0]
     top_indices = np.argsort(similarities)[-20:][::-1]  # Top 20 most similar
-    top_codes = icd10_df.iloc[top_indices]["code"].tolist()
-    top_descriptions = icd10_df.iloc[top_indices]["description"].tolist()
+    top_codes = icd10_df.iloc[top_indices]["ICD10_Code"].tolist()
+    top_descriptions = icd10_df.iloc[top_indices]["Description"].tolist()
     
     # Create API call with full clinical note
     candidate_text = "\n".join([f"{i+1}. {code} - {desc}" 
