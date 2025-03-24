@@ -32,8 +32,20 @@ def medical_spell_check(text: str, spell_checker=None, medical_dict: Optional[Di
         
         for word in words:
             # Check if a misspelled version of the word exists in our dictionary
-            if word in medical_dict:
-                corrected_words.append(medical_dict[word])
+            # Use lowercase for dictionary lookup but preserve original case
+            word_lower = word.lower()
+            
+            # Handle punctuation at the end of words
+            word_clean = word_lower.rstrip('.,;:!?')
+            punctuation = word[len(word_clean):] if len(word_clean) < len(word) else ''
+            
+            if word_clean in medical_dict:
+                # Preserve original capitalization if possible
+                if word[0].isupper() and len(medical_dict[word_clean]) > 0:
+                    replacement = medical_dict[word_clean][0].upper() + medical_dict[word_clean][1:]
+                else:
+                    replacement = medical_dict[word_clean]
+                corrected_words.append(replacement + punctuation)
             else:
                 corrected_words.append(word)
         
@@ -78,7 +90,20 @@ def standardise_abbreviations(text: str, abbreviation_dict: Dict[str, str]) -> s
         Text with expanded abbreviations
     """
     words = text.split()
-    standardised_words = [abbreviation_dict.get(word, word) for word in words]
+    standardised_words = []
+    
+    for word in words:
+        # Convert to lowercase for abbreviation lookup
+        word_lower = word.lower()
+        
+        # Check if word (lowercase) is in the abbreviation dictionary
+        if word_lower in abbreviation_dict:
+            # Replace with the expanded form
+            standardised_words.append(abbreviation_dict[word_lower])
+        else:
+            # Keep the original word
+            standardised_words.append(word)
+    
     return ' '.join(standardised_words)
 
 
@@ -100,19 +125,19 @@ def preprocess_clinical_text(
     Returns:
         Preprocessed text ready for tokenisation
     """
-    # Step 1: Medical spell checking
-    corrected_text = medical_spell_check(text, spell_checker, medical_dict)
+    # Step 1: Abbreviation standardisation (before normalization to preserve word boundaries)
+    if abbreviation_dict:
+        expanded_text = standardise_abbreviations(text, abbreviation_dict)
+    else:
+        expanded_text = text
+        
+    # Step 2: Medical spell checking
+    corrected_text = medical_spell_check(expanded_text, spell_checker, medical_dict)
     
-    # Step 2: Text normalisation
+    # Step 3: Text normalisation
     normalised_text = normalise_text(corrected_text)
     
-    # Step 3: Abbreviation standardisation
-    if abbreviation_dict:
-        standardised_text = standardise_abbreviations(normalised_text, abbreviation_dict)
-    else:
-        standardised_text = normalised_text
-    
-    return standardised_text
+    return normalised_text
 
 
 def batch_preprocess(
