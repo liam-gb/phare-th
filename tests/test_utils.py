@@ -17,7 +17,7 @@ def test_call_claude_api(mock_post):
     assert response == "A00, B00"
 
 @patch('src.utils.encode_note', return_value=torch.randn(768))
-@patch('sklearn.metrics.pairwise.cosine_similarity', return_value=np.array([[0.9, 0.8, 0.7]]))
+@patch('src.utils.cosine_similarity', return_value=np.array([[0.9, 0.8, 0.7]]))
 @patch('src.utils.call_claude_api', return_value="A00, B00")
 def test_predict_codes(mock_api, mock_similarity, mock_encode):
     note = "Test note"

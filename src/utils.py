@@ -126,7 +126,13 @@ def predict_codes(
     note_emb = encode_note(note, tokenizer, model).numpy() if tokenizer and model else torch.randn(768).numpy()
     
     # Compute cosine similarities with ICD-10 embeddings
-    similarities = cosine_similarity([note_emb], icd10_embeddings.numpy())[0]
+    # Convert tensors to numpy arrays for similarity calculation
+    embeddings_np = icd10_embeddings.numpy() if isinstance(icd10_embeddings, torch.Tensor) else icd10_embeddings
+    note_emb_np = note_emb.reshape(1, -1) if len(note_emb.shape) == 1 else note_emb
+    
+    similarities = cosine_similarity(note_emb_np, embeddings_np)[0]
+    
+    # Get top matches
     top_indices = np.argsort(similarities)[-20:][::-1]  # Top 20 most similar
     top_codes = icd10_df.iloc[top_indices][code_column].tolist()
     top_descriptions = icd10_df.iloc[top_indices][desc_column].tolist()
