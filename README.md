@@ -37,6 +37,10 @@ This approach offers several advantages:
 
 The approach is inspired by Lee and Lindsay, 2024: https://arxiv.org/pdf/2403.10822
 
+Unfortunately, the ICD-10 encoding step took too long for me to run within 2 hours to test the pipeline end-to-end, so I created tests for each component in the /tests folder. 
+
+Additionally, I had limited time to explore the data to design appropriate cleaning (and evaluate the impact of the cleaning on performance), so I included a sketch of some steps of the cleaning process in preprocessing.py. 
+
 ## Requirements
 
 ```python
